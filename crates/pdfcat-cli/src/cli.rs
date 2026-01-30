@@ -40,7 +40,7 @@ pub struct Cli {
     /// Examples:
     ///   pdfcat file1.pdf file2.pdf -o output.pdf
     ///   pdfcat chapter*.pdf -o book.pdf
-    #[arg(required = true, value_name = "FILE")]
+    #[arg(required_unless_present = "input_list", value_name = "FILE")]
     pub inputs: Vec<PathBuf>,
 
     /// Output PDF file path
@@ -281,7 +281,7 @@ impl Cli {
     #[allow(unused)]
     pub fn validate(&self) -> Result<()> {
         // Check for empty inputs (shouldn't happen with clap, but be safe)
-        if self.inputs.is_empty() {
+        if self.inputs.is_empty() && self.input_list.is_none() {
             return Err(PdfCatError::invalid_config("No input files specified"));
         }
 
