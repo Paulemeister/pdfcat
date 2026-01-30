@@ -140,7 +140,7 @@ pub struct Cli {
     ///
     /// Example:
     ///   pdfcat --input-list files.txt -o output.pdf
-    #[arg(long, value_name = "FILE")]
+    #[arg(short, long, value_name = "FILE")]
     pub input_list: Option<PathBuf>,
 
     /// Number of parallel jobs for loading PDFs
