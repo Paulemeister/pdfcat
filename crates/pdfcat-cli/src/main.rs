@@ -28,16 +28,15 @@ async fn main() {
 }
 
 /// Main application logic.
-async fn run(cli: Cli) -> Result<(), PdfCatError> {
+async fn run(mut cli: Cli) -> Result<(), PdfCatError> {
     // Validate CLI arguments
     cli.validate()?;
 
     // Get all inputs (including from input-list if specified)
-    let all_inputs = cli.get_all_inputs().await?;
+    cli.inputs = cli.get_all_inputs().await?;
 
     // Convert CLI to config
-    let mut config = cli.to_config()?;
-    config.inputs = all_inputs;
+    let config = cli.to_config()?;
 
     // Create output formatter
     let formatter = OutputFormatter::from_config(&config);
