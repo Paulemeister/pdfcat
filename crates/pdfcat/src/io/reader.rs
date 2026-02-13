@@ -287,7 +287,7 @@ impl PdfReader {
 
         // Process tasks with limited concurrency
         stream::iter(tasks)
-            .buffer_unordered(workers)
+            .buffered(workers)
             .collect::<Vec<_>>()
             .await
     }
@@ -395,7 +395,7 @@ impl PdfReader {
         });
 
         let mut indexed_results: Vec<(usize, LoadResult)> = stream::iter(tasks)
-            .buffer_unordered(workers)
+            .buffered(workers)
             .collect::<Vec<_>>()
             .await;
 
