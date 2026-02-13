@@ -36,19 +36,38 @@ where
 /// - `"./docs/*.pdf"`
 fn collect_paths_for_pattern<P: AsRef<str>>(pattern: P) -> Result<Vec<PathBuf>> {
     let mut resolved_paths = Vec::new();
+    let mut errors = vec![];
 
-    let paths = glob::glob(pattern.as_ref()).map_err(|err| PdfCatError::Other {
+    let glob_result = glob::glob(pattern.as_ref());
+    if let Ok(paths) = glob_result {
+        for entry in paths {
+            match entry {
+                Ok(path) => resolved_paths.push(path),
+                Err(e) => errors.push(PdfCatError::Other {
+                    message: e.to_string(),
+                }),
+            }
+        }
+    } else {
+        errors.push(PdfCatError::Other {
+            message: glob_result.unwrap_err().to_string(),
+        });
+    }
+    if !resolved_paths.is_empty() {
+        return Ok(resolved_paths);
+    }
+
+    let path = PathBuf::try_from(pattern.as_ref()).map_err(|err| PdfCatError::Other {
         message: err.to_string(),
     })?;
 
-    for entry in paths {
-        let path = entry.map_err(|err| PdfCatError::Other {
-            message: err.to_string(),
-        })?;
-        resolved_paths.push(path);
+    if path.exists() {
+        Ok(vec![path])
+    } else if let Some(last_err) = errors.pop() {
+        Err(last_err)
+    } else {
+        Ok(vec![])
     }
-
-    Ok(resolved_paths)
 }
 
 /// Copy object references from one PDF document to another.
