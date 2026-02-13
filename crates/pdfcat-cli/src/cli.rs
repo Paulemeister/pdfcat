@@ -366,23 +366,19 @@ impl Cli {
     /// Returns an error if the file cannot be read or contains invalid paths.
     async fn read_input_list(&self, path: &PathBuf) -> Result<Vec<PathBuf>> {
         use tokio::fs::File;
-        use tokio::io::{AsyncBufReadExt, BufReader};
+        use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader, stdin};
 
-        let file = if path.as_os_str() == "-" {
-            // Read from stdin
-            return Err(PdfCatError::invalid_config(
-                "Reading from stdin not yet implemented",
-            ));
+        let reader: Box<dyn AsyncBufRead + Unpin + Send> = if path.as_os_str() == "-" {
+            Box::new(BufReader::new(stdin()))
         } else {
-            File::open(path)
-                .await
-                .map_err(|e| PdfCatError::FailedToReadInputList {
+            Box::new(BufReader::new(File::open(path).await.map_err(|e| {
+                PdfCatError::FailedToReadInputList {
                     path: path.clone(),
                     source: e,
-                })?
+                }
+            })?))
         };
 
-        let reader = BufReader::new(file);
         let mut lines = reader.lines();
         let mut paths = Vec::new();
         let mut line_number = 0;
