@@ -57,9 +57,7 @@ fn collect_paths_for_pattern<P: AsRef<str>>(pattern: P) -> Result<Vec<PathBuf>> 
         return Ok(resolved_paths);
     }
 
-    let path = PathBuf::try_from(pattern.as_ref()).map_err(|err| PdfCatError::Other {
-        message: err.to_string(),
-    })?;
+    let path = PathBuf::from(pattern.as_ref());
 
     if path.exists() {
         Ok(vec![path])
