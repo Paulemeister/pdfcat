@@ -16,6 +16,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 
 use pdfcat::config::{CompressionLevel, Config, Metadata, OverwriteMode, PageRange, Rotation};
 use pdfcat::error::{PdfCatError, Result};
@@ -365,18 +366,16 @@ impl Cli {
     ///
     /// Returns an error if the file cannot be read or contains invalid paths.
     async fn read_input_list(&self, path: &PathBuf) -> Result<Vec<PathBuf>> {
-        use tokio::fs::File;
-        use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader, stdin};
-
-        let reader: Box<dyn AsyncBufRead + Unpin + Send> = if path.as_os_str() == "-" {
-            Box::new(BufReader::new(stdin()))
+        let reader: Box<dyn AsyncBufRead + Unpin> = if path.as_os_str() == "-" {
+            Box::new(BufReader::new(tokio::io::stdin()))
         } else {
-            Box::new(BufReader::new(File::open(path).await.map_err(|e| {
+            let file = tokio::fs::File::open(path).await.map_err(|e| {
                 PdfCatError::FailedToReadInputList {
                     path: path.clone(),
                     source: e,
                 }
-            })?))
+            })?;
+            Box::new(BufReader::new(file))
         };
 
         let mut lines = reader.lines();

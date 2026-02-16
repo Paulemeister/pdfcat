@@ -394,13 +394,10 @@ impl PdfReader {
             }
         });
 
-        let mut indexed_results: Vec<(usize, LoadResult)> = stream::iter(tasks)
+        let indexed_results: Vec<(usize, LoadResult)> = stream::iter(tasks)
             .buffered(workers)
             .collect::<Vec<_>>()
             .await;
-
-        // Sort by original index to maintain order
-        indexed_results.sort_by_key(|(idx, _)| *idx);
 
         // Call progress callback and extract results
         let mut results = Vec::with_capacity(paths.len());
