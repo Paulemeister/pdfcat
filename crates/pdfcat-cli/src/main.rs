@@ -28,10 +28,11 @@ async fn main() {
 }
 
 /// Main application logic.
-async fn run(mut cli: Cli) -> Result<(), PdfCatError> {
+async fn run(cli: Cli) -> Result<(), PdfCatError> {
     // Validate CLI arguments
     cli.validate()?;
 
+    let mut cli = cli.clone();
     // Get all inputs (including from input-list if specified)
     cli.inputs = cli.get_all_inputs().await?;
 

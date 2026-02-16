@@ -26,7 +26,7 @@ use pdfcat::error::{PdfCatError, Result};
 /// pdfcat merges multiple PDF files while preserving quality, structure,
 /// and metadata. It supports bookmarks, page ranges, rotation, and
 /// comprehensive error handling.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "pdfcat")]
 #[command(version, propagate_version = true)]
 #[command(about = "Concatenate PDF files into a single document", long_about = None)]
@@ -333,13 +333,22 @@ impl Cli {
     /// Returns an error if the input list file cannot be read or parsed.
     #[allow(unused)]
     pub async fn get_all_inputs(&self) -> Result<Vec<PathBuf>> {
+        use pdfcat::utils::PathResult;
         let patterns: Vec<String> = self
             .inputs
             .iter()
             .map(|p| p.display().to_string())
             .collect();
 
-        let mut all_inputs = pdfcat::utils::collect_paths_for_patterns(patterns)?;
+        let results = pdfcat::utils::collect_paths_for_patterns(patterns)?;
+
+        let mut all_inputs = Vec::new();
+        for result in results {
+            match result {
+                PathResult::Found(path) => all_inputs.push(path),
+                PathResult::Error(e) => eprintln!("warning: {}", e),
+            }
+        }
 
         if let Some(ref input_list_path) = self.input_list {
             let additional_inputs = self.read_input_list(input_list_path).await?;
