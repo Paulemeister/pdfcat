@@ -32,12 +32,12 @@ async fn run(cli: Cli) -> Result<(), PdfCatError> {
     // Validate CLI arguments
     cli.validate()?;
 
-    let mut cli = cli.clone();
     // Get all inputs (including from input-list if specified)
-    cli.inputs = cli.get_all_inputs().await?;
+    let all_inputs = cli.get_all_inputs().await?;
 
     // Convert CLI to config
-    let config = cli.to_config()?;
+    let mut config = cli.to_config()?;
+    config.inputs = all_inputs;
 
     // Create output formatter
     let formatter = OutputFormatter::from_config(&config);

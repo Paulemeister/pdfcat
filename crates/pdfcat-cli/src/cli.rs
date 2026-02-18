@@ -26,7 +26,7 @@ use pdfcat::error::{PdfCatError, Result};
 /// pdfcat merges multiple PDF files while preserving quality, structure,
 /// and metadata. It supports bookmarks, page ranges, rotation, and
 /// comprehensive error handling.
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug)]
 #[command(name = "pdfcat")]
 #[command(version, propagate_version = true)]
 #[command(about = "Concatenate PDF files into a single document", long_about = None)]
@@ -262,8 +262,16 @@ impl Cli {
         };
 
         // Validate the configuration
-        config.validate().map_err(|e| {
-            PdfCatError::invalid_config(format!("Configuration validation failed: {e}"))
+        config.validate().or_else(|e| match e {
+            // Ignore no inputs error if input_list was specified
+            PdfCatError::InvalidConfig { message }
+                if message == "No input files specified" && self.input_list.is_some() =>
+            {
+                Ok(())
+            }
+            _ => Err(PdfCatError::invalid_config(format!(
+                "Configuration validation failed: {e}"
+            ))),
         })?;
 
         Ok(config)
