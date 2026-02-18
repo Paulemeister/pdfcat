@@ -261,19 +261,6 @@ impl Cli {
             rotation,
         };
 
-        // Validate the configuration
-        config.validate().or_else(|e| match e {
-            // Ignore no inputs error if input_list was specified
-            PdfCatError::InvalidConfig { message }
-                if message == "No input files specified" && self.input_list.is_some() =>
-            {
-                Ok(())
-            }
-            _ => Err(PdfCatError::invalid_config(format!(
-                "Configuration validation failed: {e}"
-            ))),
-        })?;
-
         Ok(config)
     }
 
