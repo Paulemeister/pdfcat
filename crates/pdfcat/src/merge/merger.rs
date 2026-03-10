@@ -220,6 +220,7 @@ impl Merger {
 
             // Add all objects from doc to merged
             merged.objects.extend(doc.objects);
+            merged.max_id = max_id;
 
             // Update the page tree
             self.add_pages_to_tree(&mut merged, &doc_pages)?;
