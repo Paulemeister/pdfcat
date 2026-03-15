@@ -3,7 +3,7 @@
 //! This module implements the main merge algorithm that combines
 //! multiple PDF documents while preserving quality and structure.
 
-use lopdf::{Document, Object, ObjectId};
+use lopdf::{Dictionary, Document, Object, ObjectId};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -186,14 +186,121 @@ impl Merger {
         let mut merged = loaded_pdfs[0].document.clone();
         let mut max_id = merged.max_id;
 
+        if let Ok(obj1) = merged.catalog().unwrap().get("Outlines".as_ref()) {
+            if let Object::Reference(re1) = obj1 {
+                if let Some(Object::Dictionary(dict)) = merged.objects.get(re1) {
+                    for (id, obj2) in dict.as_hashmap() {
+                        let mut obj4 = obj2;
+                        if let Object::Reference(re2) = obj2 {
+                            if let Some(obj3) = merged.objects.get(re2) {
+                                obj4 = obj3;
+                            }
+                        }
+                        println!("{:?}: {:?} {:?}", id, obj4.enum_variant(), obj4);
+                    }
+                }
+            }
+        }
+        fn test(doc: &Document) -> Option<()> {
+            let mut entry_ref;
+
+            let re = doc
+                .catalog()
+                .ok()?
+                .get("Outlines".as_ref())
+                .ok()?
+                .as_reference()
+                .ok()?;
+            entry_ref = doc
+                .objects
+                .get(&re)?
+                .as_dict()
+                .ok()?
+                .get(b"First")
+                .ok()?
+                .as_reference()
+                .ok()?;
+
+            fn help<'a>(doc: &'a Document, entry_ref: &mut (u32, u16)) -> Option<()> {
+                let entry_dict = doc.objects.get(&entry_ref)?.as_dict().ok()?;
+
+                let title = entry_dict.get("Title".as_ref()).ok()?;
+                let dest = entry_dict.get("Dest".as_ref()).ok()?;
+                let next = entry_dict.get("Next".as_ref()).ok()?;
+
+                println!("Title: {:?}", title);
+                println!("Next: {:?}: {:?}", next.enum_variant(), next);
+                println!("Dest: {:?}: {:?}:", dest.enum_variant(), dest);
+
+                dest.as_array()
+                    .ok()?
+                    .iter()
+                    .for_each(|x| println!("\t{:?}: {:?}", x.enum_variant(), x));
+
+                *entry_ref = entry_dict.get("Next".as_ref()).ok()?.as_reference().ok()?;
+
+                Some(())
+            }
+
+            loop {
+                if help(&doc, &mut entry_ref).is_none() {
+                    break;
+                }
+            }
+            Some(())
+        }
+        fn test2(source: &Document, dest: &mut Document) -> Option<()> {
+            let mut entry_dict = &Dictionary::new();
+
+            let mut re = source
+                .catalog()
+                .ok()?
+                .get("Outlines".as_ref())
+                .ok()?
+                .as_reference()
+                .ok()?;
+            let source_dict = source.objects.get(&re)?.as_dict().ok()?;
+            let source_first_entry_ref = source_dict.get(b"First").ok()?.as_reference().ok()?;
+            let source_last_entry_ref = source_dict.get(b"Last").ok()?.as_reference().ok()?;
+
+            re = dest
+                .catalog()
+                .ok()?
+                .get("Outlines".as_ref())
+                .ok()?
+                .as_reference()
+                .ok()?;
+            let dest_dict = dest.objects.get(&re)?.as_dict().ok()?;
+            let dest_last_entry_ref = dest_dict.get(b"Last").ok()?.as_reference().ok()?;
+
+            dest.objects
+                .get_mut(&dest_last_entry_ref)?
+                .as_dict_mut()
+                .ok()?
+                .set("Next", Object::Reference(source_first_entry_ref));
+
+            dest.objects
+                .get_mut(&re)?
+                .as_dict_mut()
+                .ok()?
+                .set(b"Last", source_last_entry_ref);
+
+            // dest
+            //     .objects
+            //     .get(&re)?
+            //     .as_dict()
+            //     .ok()?
+
+            Some(())
+        }
+        test(&merged);
+
         let mut page_starts = vec![];
         // Process first document for page ranges
         if let Some(ref page_range) = config.page_range {
             merged = self.page_extractor.extract_pages(&merged, page_range)?;
         }
-        if let Some(page_id) = merged.page_iter().nth(0) {
-            page_starts.push(page_id);
-        }
+        page_starts.push(merged.page_iter().nth(0));
 
         // Apply rotation to first document if specified
         if let Some(rotation) = config.rotation {
@@ -215,13 +322,19 @@ impl Merger {
                 self.page_extractor.rotate_all_pages(&mut doc, rotation)?;
             }
 
+            println!("before");
+            test(&doc);
             // Renumber objects to avoid ID conflicts
             doc.renumber_objects_with(max_id + 1);
+
+            println!("after");
+            test(&doc);
+            test(&merged);
+            test2(&doc, &mut merged);
+
             max_id = doc.max_id;
 
-            if let Some(page_id) = doc.page_iter().nth(0) {
-                page_starts.push(page_id);
-            }
+            page_starts.push(doc.page_iter().nth(0));
 
             // Get page references from the document
             let doc_pages: Vec<ObjectId> = doc.get_pages().into_values().collect();
