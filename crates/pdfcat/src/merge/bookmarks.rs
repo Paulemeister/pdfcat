@@ -48,7 +48,7 @@ impl BookmarkManager {
         &self,
         doc: &mut Document,
         file_paths: &[&Path],
-        page_starts: &[ObjectId],
+        page_starts: &[Option<ObjectId>],
     ) -> Result<()> {
         if file_paths.is_empty() {
             return Ok(());
@@ -83,11 +83,10 @@ impl BookmarkManager {
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown");
 
-            let page_id = if let Some(&id) = page_starts.get(file_idx) {
-                id
-            } else {
-                pages[page_idx].1
-            };
+            let page_id = page_starts
+                .get(file_idx)
+                .and_then(|&x| x)
+                .unwrap_or(pages[page_idx].1);
 
             outline_items.push((title.to_string(), page_id));
         }
@@ -98,6 +97,146 @@ impl BookmarkManager {
 
         // Create the outline structure
         self.create_outline_structure(doc, &outline_items)?;
+
+        Ok(())
+    }
+
+    fn create_bookmark(obj: &ObjectId, parent: &ObjectId, title: &str) -> Dictionary {
+        // Create destination array [page /XYZ null null null]
+        let dest = vec![
+            Object::Reference(*obj),
+            Object::Name(b"XYZ".to_vec()),
+            Object::Null,
+            Object::Null,
+            Object::Null,
+        ];
+
+        let mut item_dict = Dictionary::new();
+        item_dict.set(
+            "Title",
+            Object::String(title.as_bytes().to_vec(), lopdf::StringFormat::Literal),
+        );
+        item_dict.set("Parent", Object::Reference(*parent));
+        item_dict.set("Dest", Object::Array(dest));
+
+        item_dict
+    }
+
+    pub fn append_bookmark_front(
+        &self,
+        doc: &mut Document,
+        obj: &ObjectId,
+        title: &str,
+    ) -> Result<()> {
+        let dict = doc.get_dict_in_dict(doc.catalog()?, b"Outlines")?;
+        let first_entry_ref = dict.get(b"First")?.as_reference()?;
+        let parent = doc
+            .objects
+            .get(&first_entry_ref)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict()?
+            .get(b"Parent")?
+            .as_reference()?;
+
+        let mut item_dict = BookmarkManager::create_bookmark(obj, &parent, title);
+        item_dict.set(b"Next", Object::Reference(first_entry_ref));
+
+        let new_id = doc.new_object_id();
+        if doc
+            .objects
+            .insert(new_id, Object::Dictionary(item_dict))
+            .is_some()
+        {
+            return Err(PdfCatError::Other {
+                message: "key already existed".into(),
+            });
+        }
+
+        let dict_mut = doc
+            .objects
+            .get_mut(&doc.catalog()?.get(b"Outlines")?.as_reference()?)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?;
+
+        dict_mut.set(b"First", Object::Reference(new_id));
+
+        doc.objects
+            .get_mut(&first_entry_ref)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?
+            .set("Prev", Object::Reference(new_id));
+
+        Ok(())
+    }
+
+    pub fn append_bookmark(&self, doc: &mut Document, obj: &ObjectId, title: &str) -> Result<()> {
+        let dict = doc.get_dict_in_dict(doc.catalog()?, b"Outlines")?;
+        let last_entry_ref = dict.get(b"Last")?.as_reference()?;
+
+        let mut item_dict = BookmarkManager::create_bookmark(obj, &last_entry_ref, title);
+        item_dict.set(b"Prev", Object::Reference(last_entry_ref));
+        let new_id = doc.new_object_id();
+        if doc
+            .objects
+            .insert(new_id, Object::Dictionary(item_dict))
+            .is_some()
+        {
+            return Err(PdfCatError::Other {
+                message: "key already existed".into(),
+            });
+        }
+
+        let dict_mut = doc
+            .objects
+            .get_mut(&doc.catalog()?.get(b"Outlines")?.as_reference()?)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?;
+
+        dict_mut.set(b"Last", Object::Reference(new_id));
+
+        doc.objects
+            .get_mut(&last_entry_ref)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?
+            .set("Next", Object::Reference(new_id));
+
+        Ok(())
+    }
+    pub fn append_bookmarks_from_doc(
+        &self,
+        dest: &mut Document,
+        source: &mut Document,
+    ) -> Result<()> {
+        let source_dict = source.get_dict_in_dict(source.catalog()?, b"Outlines")?;
+        let source_first_entry_ref = source_dict.get(b"First")?.as_reference()?;
+        let source_last_entry_ref = source_dict.get(b"Last")?.as_reference()?;
+
+        let dest_dict_mut = dest
+            .objects
+            .get_mut(&dest.catalog()?.get(b"Outlines")?.as_reference()?)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?;
+
+        let dest_dict = &*dest_dict_mut;
+        let dest_last_entry_ref = dest_dict.get(b"Last")?.as_reference()?;
+
+        // set last in outline
+        dest_dict_mut.set(b"Last", Object::Reference(source_last_entry_ref));
+
+        // expand linked list forward
+        dest.objects
+            .get_mut(&dest_last_entry_ref)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?
+            .set("Next", Object::Reference(source_first_entry_ref));
+
+        // expand linked list backward
+        source
+            .objects
+            .get_mut(&source_first_entry_ref)
+            .ok_or(PdfCatError::Other { message: "".into() })?
+            .as_dict_mut()?
+            .set("Prev", Object::Reference(dest_last_entry_ref));
 
         Ok(())
     }
