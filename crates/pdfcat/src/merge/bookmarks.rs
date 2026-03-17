@@ -128,7 +128,10 @@ impl BookmarkManager {
         obj: &ObjectId,
         title: &str,
     ) -> Result<()> {
-        let dict = doc.get_dict_in_dict(doc.catalog()?, b"Outlines")?;
+        let dict = match doc.get_dict_in_dict(doc.catalog()?, b"Outlines") {
+            Ok(dict) => dict,
+            _ => return self.create_outline_structure(doc, &[(title.into(), *obj)]),
+        };
         let first_entry_ref = dict.get(b"First")?.as_reference()?;
         let parent = doc
             .objects
